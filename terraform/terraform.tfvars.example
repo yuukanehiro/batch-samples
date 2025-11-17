@@ -1,0 +1,37 @@
+# AWS Region
+aws_region = "ap-northeast-1"
+
+# Project Configuration
+project_name = "batch-samples"
+environment  = "dev"
+
+# VPC Configuration
+vpc_cidr           = "10.0.0.0/16"
+availability_zones = ["ap-northeast-1a", "ap-northeast-1c"]
+
+# RDS Configuration (ミニマムサイズ)
+db_instance_class     = "db.t3.micro"     # 最小インスタンスサイズ
+db_allocated_storage  = 20                 # 最小ストレージ (GB)
+db_master_username    = "admin"
+db_master_password    = "YourSecurePassword123!"  # 本番環境では必ず変更してください
+db_name               = "general"
+db_port               = 3306
+
+# ECS Configuration (ミニマムサイズ)
+ecs_task_cpu    = "256"  # 0.25 vCPU (最小)
+ecs_task_memory = "512"  # 512 MB (最小)
+
+# Batch Schedule Configuration
+# cron形式: cron(分 時 日 月 曜日 年)
+# 注意: EventBridge の cron は UTC タイムゾーンです
+sample_batch_schedule = "cron(0 2 * * ? *)"  # 毎日午前2時 (UTC) = 日本時間午前11時
+retry_batch_schedule  = "cron(0 3 * * ? *)"  # 毎日午前3時 (UTC) = 日本時間午後12時
+
+# Tenant Configuration (カスタマイズ可能)
+tenants = [
+  { id = 1, code = "acme", name = "Acme Corporation", db_name = "1_acme" },
+  { id = 2, code = "techcorp", name = "Tech Corp", db_name = "2_techcorp" },
+  { id = 3, code = "finserv", name = "Financial Services Inc", db_name = "3_finserv" },
+  { id = 4, code = "healthsys", name = "Health Systems Ltd", db_name = "4_healthsys" },
+  { id = 5, code = "edutech", name = "Education Technology Group", db_name = "5_edutech" }
+]
