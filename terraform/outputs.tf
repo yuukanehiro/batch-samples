@@ -144,3 +144,19 @@ output "cloudwatch_log_group_batch_specific" {
   description = "CloudWatch log group name for AWS Batch specific"
   value       = aws_cloudwatch_log_group.batch_specific.name
 }
+
+# Lambda Outputs
+output "lambda_batch_trigger_arn" {
+  description = "Lambda function ARN for batch trigger"
+  value       = aws_lambda_function.batch_trigger.arn
+}
+
+output "lambda_batch_trigger_name" {
+  description = "Lambda function name for batch trigger"
+  value       = aws_lambda_function.batch_trigger.function_name
+}
+
+output "cloudwatch_log_group_lambda_batch_trigger" {
+  description = "CloudWatch log group name for Lambda batch trigger"
+  value       = aws_cloudwatch_log_group.lambda_batch_trigger.name
+}

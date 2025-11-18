@@ -1,4 +1,4 @@
-.PHONY: help build run test clean docker-build docker-run db-up db-down db-logs db-reset db-shell build-retry run-retry build-specific run-specific
+.PHONY: help build run test clean docker-build docker-run db-up db-down db-logs db-reset db-shell build-retry run-retry build-specific run-specific lambda-invoke lambda-invoke-single lambda-logs lambda-update
 
 # 変数定義
 APP_NAME := sample-batch
@@ -331,3 +331,45 @@ batch-list-jobs:
 	aws batch list-jobs \
 		--job-queue $$(terraform output -raw batch_job_queue_name) \
 		--job-status SUCCEEDED | head -50
+
+# =============================================================================
+# Lambda関連コマンド
+# =============================================================================
+
+## lambda-invoke: Lambda関数を手動実行（例: make lambda-invoke TENANTS=acme,techcorp）
+lambda-invoke:
+	@if [ -z "$(TENANTS)" ]; then \
+		echo "Error: TENANTS is not specified."; \
+		echo "Usage: make lambda-invoke TENANTS=acme,techcorp"; \
+		exit 1; \
+	fi
+	@cd terraform && aws lambda invoke \
+		--function-name $$(terraform output -raw lambda_batch_trigger_name) \
+		--payload "$$(echo '{"tenant_codes": "$(TENANTS)"}' | base64)" \
+		--cli-binary-format raw-in-base64-out \
+		/tmp/lambda-response.json && \
+	cat /tmp/lambda-response.json && \
+	echo ""
+
+## lambda-invoke-single: 単一テナントでLambda実行（例: make lambda-invoke-single TENANT=acme）
+lambda-invoke-single:
+	@if [ -z "$(TENANT)" ]; then \
+		echo "Error: TENANT is not specified."; \
+		echo "Usage: make lambda-invoke-single TENANT=acme"; \
+		exit 1; \
+	fi
+	@cd terraform && aws lambda invoke \
+		--function-name $$(terraform output -raw lambda_batch_trigger_name) \
+		--payload "$$(echo '{"tenant_code": "$(TENANT)"}' | base64)" \
+		--cli-binary-format raw-in-base64-out \
+		/tmp/lambda-response.json && \
+	cat /tmp/lambda-response.json && \
+	echo ""
+
+## lambda-logs: Lambda関数のCloudWatchログを表示
+lambda-logs:
+	aws logs tail /aws/lambda/batch-samples-dev-batch-trigger --follow
+
+## lambda-update: Lambda関数のコードを更新（terraform applyを使用）
+lambda-update:
+	cd terraform && terraform apply -target=aws_lambda_function.batch_trigger -auto-approve

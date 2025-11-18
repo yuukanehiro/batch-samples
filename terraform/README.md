@@ -4,7 +4,7 @@
 
 ## アーキテクチャ
 
-このプロジェクトでは2つの実行方式を提供しています：
+このプロジェクトでは3つの実行方式を提供しています：
 
 ### 1. EventBridge + ECS Fargate（シンプル構成）
 - 直接ECSタスクを実行
@@ -15,6 +15,11 @@
 - ジョブキューによる管理
 - 自動リトライ機能
 - 大規模・長時間バッチに最適
+
+### 3. EventBridge + Lambda + AWS Batch（柔軟構成）
+- Lambdaで動的にパラメータ制御
+- テナント単位での実行が容易
+- APIやイベント駆動との連携に最適
 
 ### 共通コンポーネント
 - **RDS MySQL**: 単一インスタンス内に複数データベース（0_general, 1_acme, 2_techcorp, 3_finserv, 4_healthsys, 5_edutech）
@@ -50,6 +55,11 @@
 - Compute Environment (Fargate)
 - Job Queue
 - Job Definition × 3
+
+### Lambda
+- Lambda Function (batch-trigger)
+- EventBridge ルール（スケジュールトリガー）
+- IAM Role（Batch SubmitJob権限）
 
 ### Bastion
 - EC2 t3.micro (Amazon Linux 2023)
@@ -330,6 +340,76 @@ aws events enable-rule --name batch-samples-dev-batch-sample-schedule
 aws events enable-rule --name batch-samples-dev-batch-retry-schedule
 ```
 
+## Lambda + AWS Batch での実行
+
+Lambdaを経由してAWS Batchを実行することで、動的なパラメータ制御が可能です。
+
+### アーキテクチャ
+
+```
+EventBridge → Lambda → AWS Batch (run-specific-tenants)
+                ↓
+         tenant_code を渡す
+```
+
+### Makefileを使用（推奨）
+
+```bash
+cd ..  # プロジェクトルートへ移動
+
+# 複数テナントを指定してLambda経由で実行
+make lambda-invoke TENANTS=acme,techcorp
+
+# 単一テナントを指定して実行
+make lambda-invoke-single TENANT=acme
+
+# Lambdaのログを表示
+make lambda-logs
+```
+
+### AWS CLIを直接使用
+
+```bash
+# 複数テナントを指定
+aws lambda invoke \
+  --function-name $(terraform output -raw lambda_batch_trigger_name) \
+  --payload '{"tenant_codes": ["acme", "techcorp"]}' \
+  --cli-binary-format raw-in-base64-out \
+  /tmp/response.json && cat /tmp/response.json
+
+# 単一テナントを指定
+aws lambda invoke \
+  --function-name $(terraform output -raw lambda_batch_trigger_name) \
+  --payload '{"tenant_code": "finserv"}' \
+  --cli-binary-format raw-in-base64-out \
+  /tmp/response.json && cat /tmp/response.json
+
+# カンマ区切り文字列でも可
+aws lambda invoke \
+  --function-name $(terraform output -raw lambda_batch_trigger_name) \
+  --payload '{"tenant_codes": "acme,techcorp,finserv"}' \
+  --cli-binary-format raw-in-base64-out \
+  /tmp/response.json && cat /tmp/response.json
+```
+
+### EventBridgeによる自動実行
+
+Lambda用のEventBridgeルールを有効化：
+```bash
+# デフォルトルール（複数テナント）
+aws events enable-rule --name batch-samples-dev-lambda-batch-trigger
+
+# Acme専用ルール
+aws events enable-rule --name batch-samples-dev-lambda-batch-acme
+```
+
+### ユースケース
+
+1. **API Gateway連携**: API経由でテナント指定のバッチ実行
+2. **SNS/SQS連携**: メッセージ駆動でのバッチ実行
+3. **Step Functions連携**: ワークフローの一部としてのバッチ実行
+4. **テナント別スケジュール**: 各テナントに異なるスケジュールを設定
+
 ## ログの確認
 
 CloudWatch Logsでバッチの実行ログを確認できます。
@@ -442,7 +522,8 @@ terraform/
 ├── cloudwatch.tf                # CloudWatch Logs
 ├── secrets.tf                   # Secrets Manager
 ├── bastion.tf                   # Bastion ホスト
-└── batch.tf                     # AWS Batch
+├── batch.tf                     # AWS Batch
+└── lambda.tf                    # Lambda + EventBridge
 ```
 
 ## Makefileコマンド一覧
@@ -473,3 +554,7 @@ terraform/
 | `make batch-logs-retry` | AWS Batch retry-failed-tenants のログを表示 |
 | `make batch-logs-specific` | AWS Batch run-specific-tenants のログを表示 |
 | `make batch-list-jobs` | AWS Batchジョブ一覧を表示 |
+| `make lambda-invoke TENANTS=...` | Lambda経由で指定テナントのバッチを実行 |
+| `make lambda-invoke-single TENANT=...` | Lambda経由で単一テナントのバッチを実行 |
+| `make lambda-logs` | Lambda関数のログを表示 |
+| `make lambda-update` | Lambda関数のコードを更新 |

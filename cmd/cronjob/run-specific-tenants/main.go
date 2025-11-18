@@ -49,7 +49,15 @@ func main() {
 
 	// コマンドライン引数から取得
 	if len(os.Args) > 1 {
-		tenantCodes = os.Args[1:]
+		// 単一引数でカンマ区切りの場合をサポート（AWS Batch からの呼び出し対応）
+		if len(os.Args) == 2 && strings.Contains(os.Args[1], ",") {
+			tenantCodes = strings.Split(os.Args[1], ",")
+			for i := range tenantCodes {
+				tenantCodes[i] = strings.TrimSpace(tenantCodes[i])
+			}
+		} else {
+			tenantCodes = os.Args[1:]
+		}
 		log.Info(fmt.Sprintf("Tenant codes from command line arguments: %v", tenantCodes))
 	} else {
 		// 環境変数から取得（カンマ区切り）
