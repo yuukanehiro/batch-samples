@@ -1,4 +1,4 @@
-.PHONY: help build run test clean docker-build docker-run db-up db-down db-logs db-reset db-shell build-retry run-retry build-specific run-specific lambda-invoke lambda-invoke-single lambda-logs lambda-update
+.PHONY: help build run test clean docker-build docker-run db-up db-down db-logs db-reset db-shell build-retry run-retry build-specific run-specific lambda-invoke lambda-invoke-single lambda-logs lambda-update sfn-run-workflow sfn-run-specific sfn-list-executions sfn-logs
 
 # 変数定義
 APP_NAME := sample-batch
@@ -373,3 +373,35 @@ lambda-logs:
 ## lambda-update: Lambda関数のコードを更新（terraform applyを使用）
 lambda-update:
 	cd terraform && terraform apply -target=aws_lambda_function.batch_trigger -auto-approve
+
+# =============================================================================
+# Step Functions関連コマンド
+# =============================================================================
+
+## sfn-run-workflow: バッチワークフロー（sample-batch → retry）を実行
+sfn-run-workflow:
+	@cd terraform && aws stepfunctions start-execution \
+		--state-machine-arn $$(terraform output -raw step_functions_batch_workflow_arn) \
+		--name "manual-batch-workflow-$$(date +%Y%m%d-%H%M%S)"
+
+## sfn-run-specific: 指定テナントワークフローを実行（例: make sfn-run-specific TENANTS=acme,techcorp）
+sfn-run-specific:
+	@if [ -z "$(TENANTS)" ]; then \
+		echo "Error: TENANTS is not specified."; \
+		echo "Usage: make sfn-run-specific TENANTS=acme,techcorp"; \
+		exit 1; \
+	fi
+	@cd terraform && aws stepfunctions start-execution \
+		--state-machine-arn $$(terraform output -raw step_functions_specific_tenants_workflow_arn) \
+		--name "manual-specific-workflow-$$(date +%Y%m%d-%H%M%S)" \
+		--input "{\"tenant_codes\": [\"$$(echo $(TENANTS) | sed 's/,/\",\"/g')\"]}"
+
+## sfn-list-executions: Step Functions実行一覧を表示
+sfn-list-executions:
+	@cd terraform && aws stepfunctions list-executions \
+		--state-machine-arn $$(terraform output -raw step_functions_batch_workflow_arn) \
+		--max-results 10
+
+## sfn-logs: Step Functionsのログを表示
+sfn-logs:
+	aws logs tail /aws/vendedlogs/states/batch-samples-dev-batch-workflow --follow

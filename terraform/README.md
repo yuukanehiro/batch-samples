@@ -21,6 +21,11 @@
 - テナント単位での実行が容易
 - APIやイベント駆動との連携に最適
 
+### 4. Step Functions + AWS Batch（ワークフロー構成）
+- 複数ジョブの連携・依存関係を管理
+- エラー処理・リトライの可視化
+- 複雑なバッチパイプラインに最適
+
 ### 共通コンポーネント
 - **RDS MySQL**: 単一インスタンス内に複数データベース（0_general, 1_acme, 2_techcorp, 3_finserv, 4_healthsys, 5_edutech）
 - **環境**: dev環境のみ（必要に応じてstg, prodを追加可能）
@@ -60,6 +65,11 @@
 - Lambda Function (batch-trigger)
 - EventBridge ルール（スケジュールトリガー）
 - IAM Role（Batch SubmitJob権限）
+
+### Step Functions
+- State Machine × 2 (batch-workflow, specific-tenants-workflow)
+- EventBridge ルール（スケジュールトリガー）
+- IAM Role（Batch/Lambda実行権限）
 
 ### Bastion
 - EC2 t3.micro (Amazon Linux 2023)
@@ -432,6 +442,73 @@ aws events enable-rule --name batch-samples-dev-lambda-batch-trigger
 3. **SNS/SQS連携**: メッセージ駆動でのバッチ実行
 4. **Step Functions連携**: ワークフローの一部としてのバッチ実行
 
+## Step Functions での実行
+
+Step Functions を使用すると、複数のバッチジョブを連携させたワークフローを構築できます。
+
+### ワークフロー
+
+#### 1. batch-workflow（全テナント処理）
+```
+sample-batch → 失敗チェック → retry-failed-tenants（必要な場合）
+```
+
+#### 2. specific-tenants-workflow（指定テナント処理）
+```
+Lambda → AWS Batch → 完了待ち → 結果確認
+```
+
+### Makefileを使用（推奨）
+
+```bash
+cd ..  # プロジェクトルートへ移動
+
+# 全テナントワークフローを実行
+make sfn-run-workflow
+
+# 指定テナントワークフローを実行
+make sfn-run-specific TENANTS=acme,techcorp
+
+# 実行一覧を表示
+make sfn-list-executions
+
+# ログを表示
+make sfn-logs
+```
+
+### AWS CLIを直接使用
+
+```bash
+# batch-workflowを実行
+aws stepfunctions start-execution \
+  --state-machine-arn $(terraform output -raw step_functions_batch_workflow_arn) \
+  --name "manual-execution-$(date +%Y%m%d-%H%M%S)"
+
+# specific-tenants-workflowを実行
+aws stepfunctions start-execution \
+  --state-machine-arn $(terraform output -raw step_functions_specific_tenants_workflow_arn) \
+  --name "manual-specific-$(date +%Y%m%d-%H%M%S)" \
+  --input '{"tenant_codes": ["acme", "techcorp"]}'
+
+# 実行状況を確認
+aws stepfunctions describe-execution \
+  --execution-arn <execution-arn>
+```
+
+### EventBridgeによる自動実行
+
+Step Functions用のEventBridgeルールを有効化：
+```bash
+aws events enable-rule --name batch-samples-dev-sfn-batch-workflow
+```
+
+### ユースケース
+
+1. **エラーハンドリング**: sample-batch失敗時に自動でretry-batchを実行
+2. **依存関係管理**: 複数ジョブの順序制御
+3. **可視化**: AWS コンソールで実行状況をグラフィカルに確認
+4. **監査**: 実行履歴の保持とトレーサビリティ
+
 ## ログの確認
 
 CloudWatch Logsでバッチの実行ログを確認できます。
@@ -546,6 +623,7 @@ terraform/
 ├── bastion.tf                   # Bastion ホスト
 ├── batch.tf                     # AWS Batch
 ├── lambda.tf                    # Lambda + EventBridge
+├── step_functions.tf            # Step Functions
 └── lambda/
     └── src/
         ├── index.py             # Lambda 関数コード
@@ -584,3 +662,7 @@ terraform/
 | `make lambda-invoke-single TENANT=...` | Lambda経由で単一テナントのバッチを実行 |
 | `make lambda-logs` | Lambda関数のログを表示 |
 | `make lambda-update` | Lambda関数のコードを更新 |
+| `make sfn-run-workflow` | Step Functions バッチワークフローを実行 |
+| `make sfn-run-specific TENANTS=...` | Step Functions 指定テナントワークフローを実行 |
+| `make sfn-list-executions` | Step Functions 実行一覧を表示 |
+| `make sfn-logs` | Step Functions のログを表示 |

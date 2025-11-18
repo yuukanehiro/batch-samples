@@ -160,3 +160,29 @@ output "cloudwatch_log_group_lambda_batch_trigger" {
   description = "CloudWatch log group name for Lambda batch trigger"
   value       = aws_cloudwatch_log_group.lambda_batch_trigger.name
 }
+
+# Step Functions Outputs
+output "step_functions_batch_workflow_arn" {
+  description = "Step Functions state machine ARN for batch workflow"
+  value       = aws_sfn_state_machine.batch_workflow.arn
+}
+
+output "step_functions_batch_workflow_name" {
+  description = "Step Functions state machine name for batch workflow"
+  value       = aws_sfn_state_machine.batch_workflow.name
+}
+
+output "step_functions_specific_tenants_workflow_arn" {
+  description = "Step Functions state machine ARN for specific tenants workflow"
+  value       = aws_sfn_state_machine.specific_tenants_workflow.arn
+}
+
+output "step_functions_specific_tenants_workflow_name" {
+  description = "Step Functions state machine name for specific tenants workflow"
+  value       = aws_sfn_state_machine.specific_tenants_workflow.name
+}
+
+output "cloudwatch_log_group_step_functions" {
+  description = "CloudWatch log group name for Step Functions"
+  value       = aws_cloudwatch_log_group.step_functions.name
+}
