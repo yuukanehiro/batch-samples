@@ -159,3 +159,175 @@ dev: db-up
 ## all: フルビルド（クリーン + ビルド + テスト）
 all: clean build test
 	@echo "Full build completed"
+
+# =============================================================================
+# AWS/ECR関連コマンド
+# =============================================================================
+
+# AWS変数
+AWS_REGION := ap-northeast-1
+AWS_ACCOUNT_ID := 925948485307
+ECR_BASE := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/batch-samples-dev
+PLATFORM := linux/amd64
+
+## ecr-login: ECRにログイン
+ecr-login:
+	aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com
+
+## ecr-build: 全Dockerイメージをビルド（ECR用・linux/amd64）
+ecr-build: ecr-build-sample ecr-build-retry ecr-build-specific
+
+ecr-build-sample:
+	docker build --platform $(PLATFORM) --target sample-batch -t sample-batch .
+
+ecr-build-retry:
+	docker build --platform $(PLATFORM) --target retry-failed-tenants -t retry-failed-tenants .
+
+ecr-build-specific:
+	docker build --platform $(PLATFORM) --target run-specific-tenants -t run-specific-tenants .
+
+## ecr-push: 全イメージをECRにプッシュ
+ecr-push: ecr-push-sample ecr-push-retry ecr-push-specific
+
+ecr-push-sample:
+	docker tag sample-batch:latest $(ECR_BASE)/sample-batch:latest
+	docker push $(ECR_BASE)/sample-batch:latest
+
+ecr-push-retry:
+	docker tag retry-failed-tenants:latest $(ECR_BASE)/retry-failed-tenants:latest
+	docker push $(ECR_BASE)/retry-failed-tenants:latest
+
+ecr-push-specific:
+	docker tag run-specific-tenants:latest $(ECR_BASE)/run-specific-tenants:latest
+	docker push $(ECR_BASE)/run-specific-tenants:latest
+
+## ecr-deploy: ECRビルド＆プッシュ（ecr-login + ecr-build + ecr-push）
+ecr-deploy: ecr-login ecr-build ecr-push
+	@echo "ECR deploy completed"
+
+## ecs-run-sample: sample-batch ECSタスクを手動実行
+ecs-run-sample:
+	@cd terraform && aws ecs run-task \
+		--cluster $$(terraform output -raw ecs_cluster_name) \
+		--task-definition $$(terraform output -raw ecs_task_definition_sample_batch_arn) \
+		--launch-type FARGATE \
+		--network-configuration "awsvpcConfiguration={subnets=[$$(terraform output -json private_subnet_ids | jq -r '.[0]')],securityGroups=[$$(terraform output -raw ecs_task_security_group_id)],assignPublicIp=DISABLED}"
+
+## ecs-run-retry: retry-failed-tenants ECSタスクを手動実行
+ecs-run-retry:
+	@cd terraform && aws ecs run-task \
+		--cluster $$(terraform output -raw ecs_cluster_name) \
+		--task-definition $$(terraform output -raw ecs_task_definition_retry_batch_arn) \
+		--launch-type FARGATE \
+		--network-configuration "awsvpcConfiguration={subnets=[$$(terraform output -json private_subnet_ids | jq -r '.[0]')],securityGroups=[$$(terraform output -raw ecs_task_security_group_id)],assignPublicIp=DISABLED}"
+
+## ecs-run-specific: run-specific-tenants ECSタスクを手動実行（例: make ecs-run-specific TENANTS=acme,techcorp）
+ecs-run-specific:
+	@if [ -z "$(TENANTS)" ]; then \
+		echo "Error: TENANTS is not specified."; \
+		echo "Usage: make ecs-run-specific TENANTS=acme,techcorp"; \
+		exit 1; \
+	fi
+	@cd terraform && aws ecs run-task \
+		--cluster $$(terraform output -raw ecs_cluster_name) \
+		--task-definition $$(terraform output -raw ecs_task_definition_specific_batch_arn) \
+		--launch-type FARGATE \
+		--network-configuration "awsvpcConfiguration={subnets=[$$(terraform output -json private_subnet_ids | jq -r '.[0]')],securityGroups=[$$(terraform output -raw ecs_task_security_group_id)],assignPublicIp=DISABLED}" \
+		--overrides '{"containerOverrides":[{"name":"specific-batch","command":[$(shell echo $(TENANTS) | sed 's/,/","/g' | sed 's/^/"/;s/$$/"/;')]}]}'
+
+## logs-sample: sample-batchのCloudWatchログを表示
+logs-sample:
+	aws logs tail /ecs/batch-samples-dev/sample-batch --follow
+
+## logs-retry: retry-failed-tenantsのCloudWatchログを表示
+logs-retry:
+	aws logs tail /ecs/batch-samples-dev/retry-failed-tenants --follow
+
+## logs-specific: run-specific-tenantsのCloudWatchログを表示
+logs-specific:
+	aws logs tail /ecs/batch-samples-dev/run-specific-tenants --follow
+
+# =============================================================================
+# Terraform関連コマンド
+# =============================================================================
+
+## tf-init: Terraform初期化
+tf-init:
+	cd terraform && terraform init
+
+## tf-plan: Terraformプラン
+tf-plan:
+	cd terraform && terraform plan
+
+## tf-apply: Terraform適用
+tf-apply:
+	cd terraform && terraform apply
+
+## tf-destroy: Terraformリソース削除
+tf-destroy:
+	cd terraform && terraform destroy
+
+## tf-output: Terraform出力値を表示
+tf-output:
+	cd terraform && terraform output
+
+## aws-db-init: AWS RDSのデータベースを初期化（Bastion経由）
+aws-db-init:
+	@BASTION_IP=$$(cd terraform && terraform output -raw bastion_public_ip) && \
+	RDS_HOST=$$(cd terraform && terraform output -raw rds_address) && \
+	cat docker/mysql/init/00_create_general_database.sql | ssh -i ~/.ssh/batch-samples-bastion ec2-user@$$BASTION_IP "mysql -h $$RDS_HOST -u admin -pYourSecurePassword123!" && \
+	cat docker/mysql/init/01_create_databases.sql | ssh -i ~/.ssh/batch-samples-bastion ec2-user@$$BASTION_IP "mysql -h $$RDS_HOST -u admin -pYourSecurePassword123!" && \
+	cat docker/mysql/init/02_insert_sample_data.sql | ssh -i ~/.ssh/batch-samples-bastion ec2-user@$$BASTION_IP "mysql -h $$RDS_HOST -u admin -pYourSecurePassword123!"
+	@echo "Database initialization completed"
+
+# =============================================================================
+# AWS Batch関連コマンド
+# =============================================================================
+
+## batch-run-sample: sample-batch AWS Batchジョブを手動実行
+batch-run-sample:
+	@cd terraform && aws batch submit-job \
+		--job-name "manual-sample-batch-$$(date +%Y%m%d-%H%M%S)" \
+		--job-queue $$(terraform output -raw batch_job_queue_name) \
+		--job-definition $$(terraform output -raw batch_job_definition_sample_arn)
+
+## batch-run-retry: retry-failed-tenants AWS Batchジョブを手動実行
+batch-run-retry:
+	@cd terraform && aws batch submit-job \
+		--job-name "manual-retry-batch-$$(date +%Y%m%d-%H%M%S)" \
+		--job-queue $$(terraform output -raw batch_job_queue_name) \
+		--job-definition $$(terraform output -raw batch_job_definition_retry_arn)
+
+## batch-run-specific: run-specific-tenants AWS Batchジョブを手動実行（例: make batch-run-specific TENANTS=acme,techcorp）
+batch-run-specific:
+	@if [ -z "$(TENANTS)" ]; then \
+		echo "Error: TENANTS is not specified."; \
+		echo "Usage: make batch-run-specific TENANTS=acme,techcorp"; \
+		exit 1; \
+	fi
+	@cd terraform && aws batch submit-job \
+		--job-name "manual-specific-batch-$$(date +%Y%m%d-%H%M%S)" \
+		--job-queue $$(terraform output -raw batch_job_queue_name) \
+		--job-definition $$(terraform output -raw batch_job_definition_specific_arn) \
+		--container-overrides '{"command":[$(shell echo $(TENANTS) | sed 's/,/","/g' | sed 's/^/"/;s/$$/"/;')]}'
+
+## batch-logs-sample: sample-batch AWS BatchのCloudWatchログを表示
+batch-logs-sample:
+	aws logs tail /aws/batch/batch-samples-dev/sample-batch --follow
+
+## batch-logs-retry: retry-failed-tenants AWS BatchのCloudWatchログを表示
+batch-logs-retry:
+	aws logs tail /aws/batch/batch-samples-dev/retry-failed-tenants --follow
+
+## batch-logs-specific: run-specific-tenants AWS BatchのCloudWatchログを表示
+batch-logs-specific:
+	aws logs tail /aws/batch/batch-samples-dev/run-specific-tenants --follow
+
+## batch-list-jobs: AWS Batchジョブ一覧を表示
+batch-list-jobs:
+	@cd terraform && aws batch list-jobs \
+		--job-queue $$(terraform output -raw batch_job_queue_name) \
+		--job-status RUNNING && \
+	aws batch list-jobs \
+		--job-queue $$(terraform output -raw batch_job_queue_name) \
+		--job-status SUCCEEDED | head -50

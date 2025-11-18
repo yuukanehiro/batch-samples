@@ -110,3 +110,9 @@ variable "tenants" {
     { id = 5, code = "edutech", name = "Education Technology Group", db_name = "5_edutech" }
   ]
 }
+
+# Bastion Host Settings
+variable "bastion_public_key" {
+  description = "Public key for Bastion host SSH access"
+  type        = string
+}

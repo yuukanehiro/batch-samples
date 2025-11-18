@@ -35,3 +35,8 @@ tenants = [
   { id = 4, code = "healthsys", name = "Health Systems Ltd", db_name = "4_healthsys" },
   { id = 5, code = "edutech", name = "Education Technology Group", db_name = "5_edutech" }
 ]
+
+# Bastion Host Configuration
+# SSH公開鍵を設定してください
+# 生成例: ssh-keygen -t ed25519 -f ~/.ssh/batch-samples-bastion -N "" -C "batch-samples-bastion"
+bastion_public_key = "ssh-ed25519 AAAA... your-public-key"

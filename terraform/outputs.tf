@@ -87,3 +87,60 @@ output "cloudwatch_log_group_specific_batch" {
   description = "CloudWatch log group name for run-specific-tenants batch"
   value       = aws_cloudwatch_log_group.specific_batch.name
 }
+
+# Security Group Outputs
+output "ecs_task_security_group_id" {
+  description = "ECS task security group ID"
+  value       = aws_security_group.ecs_task.id
+}
+
+output "rds_security_group_id" {
+  description = "RDS security group ID"
+  value       = aws_security_group.rds.id
+}
+
+# AWS Batch Outputs
+output "batch_compute_environment_arn" {
+  description = "AWS Batch compute environment ARN"
+  value       = aws_batch_compute_environment.fargate.arn
+}
+
+output "batch_job_queue_arn" {
+  description = "AWS Batch job queue ARN"
+  value       = aws_batch_job_queue.main.arn
+}
+
+output "batch_job_queue_name" {
+  description = "AWS Batch job queue name"
+  value       = aws_batch_job_queue.main.name
+}
+
+output "batch_job_definition_sample_arn" {
+  description = "AWS Batch job definition ARN for sample batch"
+  value       = aws_batch_job_definition.sample_batch.arn
+}
+
+output "batch_job_definition_retry_arn" {
+  description = "AWS Batch job definition ARN for retry batch"
+  value       = aws_batch_job_definition.retry_batch.arn
+}
+
+output "batch_job_definition_specific_arn" {
+  description = "AWS Batch job definition ARN for specific batch"
+  value       = aws_batch_job_definition.specific_batch.arn
+}
+
+output "cloudwatch_log_group_batch_sample" {
+  description = "CloudWatch log group name for AWS Batch sample"
+  value       = aws_cloudwatch_log_group.batch_sample.name
+}
+
+output "cloudwatch_log_group_batch_retry" {
+  description = "CloudWatch log group name for AWS Batch retry"
+  value       = aws_cloudwatch_log_group.batch_retry.name
+}
+
+output "cloudwatch_log_group_batch_specific" {
+  description = "CloudWatch log group name for AWS Batch specific"
+  value       = aws_cloudwatch_log_group.batch_specific.name
+}
