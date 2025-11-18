@@ -349,19 +349,45 @@ Lambdaを経由してAWS Batchを実行することで、動的なパラメー�
 ```
 EventBridge → Lambda → AWS Batch (run-specific-tenants)
                 ↓
-         tenant_code を渡す
+    tenant_codes.json から読み込み
+    カンマ区切り文字列で渡す
 ```
+
+### テナントリストの管理
+
+テナントリストは `terraform/lambda/src/tenant_codes.json` で管理します：
+
+```json
+{
+  "tenant_codes": [
+    "acme",
+    "techcorp",
+    "finserv",
+    "healthsys",
+    "edutech"
+  ]
+}
+```
+
+テナントを追加・変更した場合は、Lambda を再デプロイします：
+```bash
+cd terraform
+terraform apply
+```
+
+**スケーラビリティ**: カンマ区切り文字列形式により、**数千テナント**まで対応可能です（AWS Batch containerOverrides の 8192 文字制限を効率的に使用）。
 
 ### Makefileを使用（推奨）
 
 ```bash
 cd ..  # プロジェクトルートへ移動
 
-# 複数テナントを指定してLambda経由で実行
-make lambda-invoke TENANTS=acme,techcorp
-
-# 単一テナントを指定して実行
-make lambda-invoke-single TENANT=acme
+# tenant_codes.json のテナントを全て実行
+aws lambda invoke \
+  --function-name batch-samples-dev-batch-trigger \
+  --payload '{}' \
+  --cli-binary-format raw-in-base64-out \
+  /tmp/response.json && cat /tmp/response.json
 
 # Lambdaのログを表示
 make lambda-logs
@@ -370,17 +396,17 @@ make lambda-logs
 ### AWS CLIを直接使用
 
 ```bash
-# 複数テナントを指定
+# tenant_codes.json から読み込んで実行（推奨）
 aws lambda invoke \
   --function-name $(terraform output -raw lambda_batch_trigger_name) \
-  --payload '{"tenant_codes": ["acme", "techcorp"]}' \
+  --payload '{}' \
   --cli-binary-format raw-in-base64-out \
   /tmp/response.json && cat /tmp/response.json
 
-# 単一テナントを指定
+# イベントで上書き指定も可能
 aws lambda invoke \
   --function-name $(terraform output -raw lambda_batch_trigger_name) \
-  --payload '{"tenant_code": "finserv"}' \
+  --payload '{"tenant_codes": ["acme", "techcorp"]}' \
   --cli-binary-format raw-in-base64-out \
   /tmp/response.json && cat /tmp/response.json
 
@@ -396,19 +422,15 @@ aws lambda invoke \
 
 Lambda用のEventBridgeルールを有効化：
 ```bash
-# デフォルトルール（複数テナント）
 aws events enable-rule --name batch-samples-dev-lambda-batch-trigger
-
-# Acme専用ルール
-aws events enable-rule --name batch-samples-dev-lambda-batch-acme
 ```
 
 ### ユースケース
 
-1. **API Gateway連携**: API経由でテナント指定のバッチ実行
-2. **SNS/SQS連携**: メッセージ駆動でのバッチ実行
-3. **Step Functions連携**: ワークフローの一部としてのバッチ実行
-4. **テナント別スケジュール**: 各テナントに異なるスケジュールを設定
+1. **定期バッチ実行**: EventBridge で毎日特定テナントを処理
+2. **API Gateway連携**: API経由でテナント指定のバッチ実行
+3. **SNS/SQS連携**: メッセージ駆動でのバッチ実行
+4. **Step Functions連携**: ワークフローの一部としてのバッチ実行
 
 ## ログの確認
 
@@ -523,7 +545,11 @@ terraform/
 ├── secrets.tf                   # Secrets Manager
 ├── bastion.tf                   # Bastion ホスト
 ├── batch.tf                     # AWS Batch
-└── lambda.tf                    # Lambda + EventBridge
+├── lambda.tf                    # Lambda + EventBridge
+└── lambda/
+    └── src/
+        ├── index.py             # Lambda 関数コード
+        └── tenant_codes.json    # テナントコード設定
 ```
 
 ## Makefileコマンド一覧
