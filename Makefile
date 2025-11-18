@@ -253,23 +253,44 @@ logs-specific:
 
 ## tf-init: Terraform初期化
 tf-init:
-	cd terraform && terraform init
+	cd terraform && source .envrc && terraform init
 
 ## tf-plan: Terraformプラン
 tf-plan:
-	cd terraform && terraform plan
+	cd terraform && source .envrc && terraform plan
 
 ## tf-apply: Terraform適用
 tf-apply:
-	cd terraform && terraform apply
+	cd terraform && source .envrc && terraform apply
 
-## tf-destroy: Terraformリソース削除
+## tf-apply-auto: Terraform適用（確認なし）
+tf-apply-auto:
+	cd terraform && source .envrc && terraform apply -auto-approve
+
+## tf-destroy: Terraformリソース削除（確認あり）
 tf-destroy:
-	cd terraform && terraform destroy
+	cd terraform && source .envrc && terraform destroy
+
+## tf-destroy-auto: Terraformリソース削除（確認なし）
+tf-destroy-auto:
+	cd terraform && source .envrc && terraform destroy -auto-approve
+
+## tf-destroy-target: 特定リソースのみ削除（例: make tf-destroy-target TARGET=aws_instance.bastion）
+tf-destroy-target:
+	@if [ -z "$(TARGET)" ]; then \
+		echo "Error: TARGET is not specified."; \
+		echo "Usage: make tf-destroy-target TARGET=aws_instance.bastion"; \
+		exit 1; \
+	fi
+	cd terraform && source .envrc && terraform destroy -target=$(TARGET) -auto-approve
 
 ## tf-output: Terraform出力値を表示
 tf-output:
-	cd terraform && terraform output
+	cd terraform && source .envrc && terraform output
+
+## tf-whoami: 現在使用中のAWS認証情報を表示
+tf-whoami:
+	cd terraform && source .envrc && aws sts get-caller-identity
 
 ## aws-db-init: AWS RDSのデータベースを初期化（Bastion経由）
 aws-db-init:
