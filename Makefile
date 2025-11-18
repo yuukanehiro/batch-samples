@@ -275,6 +275,24 @@ tf-destroy:
 tf-destroy-auto:
 	cd terraform && source .envrc && terraform destroy -auto-approve
 
+## ecr-delete-images: ECRリポジトリのイメージを全て削除
+ecr-delete-images:
+	@echo "Deleting all ECR images..."
+	@cd terraform && source .envrc && \
+		for repo in batch-samples-dev/sample-batch batch-samples-dev/retry-failed-tenants batch-samples-dev/run-specific-tenants; do \
+			echo "Deleting images from $$repo..."; \
+			images=$$(aws ecr list-images --repository-name "$$repo" --query 'imageIds[*]' --output json 2>/dev/null); \
+			if [ "$$images" != "[]" ] && [ -n "$$images" ]; then \
+				echo "$$images" | aws ecr batch-delete-image --repository-name "$$repo" --image-ids file:///dev/stdin 2>/dev/null || true; \
+			fi; \
+		done
+	@echo "ECR images deleted"
+
+## tf-destroy-all: ECRイメージ削除 + Terraform削除（完全削除）
+tf-destroy-all:
+	@$(MAKE) ecr-delete-images
+	@$(MAKE) tf-destroy-auto
+
 ## tf-destroy-target: 特定リソースのみ削除（例: make tf-destroy-target TARGET=aws_instance.bastion）
 tf-destroy-target:
 	@if [ -z "$(TARGET)" ]; then \
@@ -291,6 +309,10 @@ tf-output:
 ## tf-whoami: 現在使用中のAWS認証情報を表示
 tf-whoami:
 	cd terraform && source .envrc && aws sts get-caller-identity
+
+## tf-state-list: Terraform stateのリソース一覧を表示
+tf-state-list:
+	cd terraform && source .envrc && terraform state list
 
 ## aws-db-init: AWS RDSのデータベースを初期化（Bastion経由）
 aws-db-init:
